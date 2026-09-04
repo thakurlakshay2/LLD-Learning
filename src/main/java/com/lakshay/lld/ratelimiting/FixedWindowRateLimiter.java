@@ -47,6 +47,14 @@ public class FixedWindowRateLimiter {
 		}
 	}
 
+	/**
+	 * Exposes the configured limit so the HTTP layer can tell callers what limit
+	 * applies to their requests.
+	 */
+	public int maxRequests() {
+		return maxRequests;
+	}
+
 	private static final class WindowCounter {
 		private long windowStartedAt;
 		private int requestCount;

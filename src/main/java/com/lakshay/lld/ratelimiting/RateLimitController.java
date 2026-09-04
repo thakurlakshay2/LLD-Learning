@@ -21,9 +21,16 @@ public class RateLimitController {
 	@GetMapping("/api/rate-limit/{clientId}")
 	public ResponseEntity<RateLimitResult> checkRateLimit(@PathVariable String clientId) {
 		RateLimitResult result = rateLimiter.check(clientId);
-		return ResponseEntity.status(result.allowed() ? HttpStatus.OK : HttpStatus.TOO_MANY_REQUESTS)
+		ResponseEntity.BodyBuilder response = ResponseEntity
+				.status(result.allowed() ? HttpStatus.OK : HttpStatus.TOO_MANY_REQUESTS)
+				.header("X-RateLimit-Limit", String.valueOf(rateLimiter.maxRequests()))
 				.header("X-RateLimit-Remaining", String.valueOf(result.remainingRequests()))
-				.header("Retry-After", String.valueOf(result.retryAfterSeconds()))
-				.body(result);
+				;
+
+		if (!result.allowed()) {
+			response.header("Retry-After", String.valueOf(result.retryAfterSeconds()));
+		}
+
+		return response.body(result);
 	}
 }

@@ -12,8 +12,13 @@ class FixedWindowRateLimiterTests {
 		FixedWindowRateLimiter limiter = new FixedWindowRateLimiter(2, 60);
 
 		assertTrue(limiter.check("alice").allowed());
-		assertTrue(limiter.check("alice").allowed());
-		assertFalse(limiter.check("alice").allowed());
+		RateLimitResult secondRequest = limiter.check("alice");
+		RateLimitResult rejectedRequest = limiter.check("alice");
+
+		assertTrue(secondRequest.allowed());
+		assertTrue(secondRequest.remainingRequests() == 0);
+		assertFalse(rejectedRequest.allowed());
+		assertTrue(rejectedRequest.retryAfterSeconds() > 0);
 	}
 
 	@Test
