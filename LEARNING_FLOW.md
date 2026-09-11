@@ -1,6 +1,6 @@
 # Learning flow: a basic rate limiter
 
-This project starts with a deliberately small **fixed-window, in-memory** rate limiter. It is a learning baseline, not a production-ready solution. The point is to understand the pieces before moving to Redis, distributed systems, or a more advanced algorithm.
+This project starts with a deliberately small **fixed-window, in-memory** rate limiter. It is a learning baseline, not a production-ready solution. The point is to understand the pieces before moving to Redis, distributed systems, or a more advanced algorithm. For the full architecture and trade-offs, see [DESIGN.md](DESIGN.md).
 
 ## Goal
 
@@ -34,8 +34,10 @@ For an allowed request, the body looks like this:
 ```json
 {
   "allowed": true,
+  "limit": 5,
   "remainingRequests": 4,
-  "retryAfterSeconds": 0
+  "retryAfterSeconds": 0,
+  "resetAt": "2026-09-11T12:01:00Z"
 }
 ```
 
@@ -56,10 +58,13 @@ HTTP request
 RateLimitController
     |
     v
+RateLimiter (interface)
+    |
+    v
 FixedWindowRateLimiter
     |
     +-- Load (or create) the client's counter
-    +-- Reset it if its 60-second window ended
+    +-- Replace it if it belongs to an earlier fixed window
     +-- Under the limit? increment and allow
     +-- At the limit? reject with a retry time
     |
@@ -70,8 +75,10 @@ HTTP 200 or HTTP 429
 ## Read the code in this order
 
 1. [RateLimitController.java](src/main/java/com/lakshay/lld/ratelimiting/RateLimitController.java) — the HTTP entry point and response headers.
-2. [RateLimitResult.java](src/main/java/com/lakshay/lld/ratelimiting/RateLimitResult.java) — the small result object returned to callers.
-3. [FixedWindowRateLimiter.java](src/main/java/com/lakshay/lld/ratelimiting/FixedWindowRateLimiter.java) — the algorithm and per-client state.
+2. [RateLimiter.java](src/main/java/com/lakshay/lld/ratelimiting/RateLimiter.java) — the algorithm-independent contract.
+3. [RateLimitResult.java](src/main/java/com/lakshay/lld/ratelimiting/RateLimitResult.java) — the decision returned to callers.
+4. [FixedWindowRateLimiter.java](src/main/java/com/lakshay/lld/ratelimiting/FixedWindowRateLimiter.java) — the algorithm and per-client state.
+5. [RateLimitProperties.java](src/main/java/com/lakshay/lld/ratelimiting/RateLimitProperties.java) — validated configuration.
 
 ## What this teaches
 
@@ -79,16 +86,18 @@ HTTP 200 or HTTP 429
 - A **counter** tracks requests for that key.
 - A **window** defines when the counter resets.
 - `ConcurrentHashMap` allows counters for multiple clients to be held safely in memory.
-- Synchronizing a single counter prevents two simultaneous requests from both taking the last available slot.
+- `ConcurrentHashMap.compute` makes a decision atomic for one client without blocking other clients.
+- A `Clock` makes time-dependent behavior deterministic and testable.
+- An interface lets the controller stay unchanged when the limiting algorithm changes.
 
 ## The algorithm, step by step
 
 For every request, `FixedWindowRateLimiter.check(clientId)` does this:
 
-1. Gets the current time and looks up the client's `WindowCounter` in the `ConcurrentHashMap`.
+1. Gets the current time from the injected `Clock` and calculates the current window boundary.
 2. Creates a counter when this is that client's first request.
-3. Locks only that client's counter. Requests from `alice` do not block `bob`.
-4. Checks whether the window has expired. If yes, it sets the count back to zero and begins a new window.
+3. Atomically updates one client entry with `ConcurrentHashMap.compute`. Requests from `alice` do not block `bob`.
+4. Checks whether the stored counter belongs to the current window. If not, it starts with zero requests.
 5. Rejects the request when the count has already reached the configured limit.
 6. Otherwise, increments the count and returns the remaining quota.
 
@@ -96,7 +105,7 @@ The lookup is approximately **O(1)**. Memory use is **O(number of distinct clien
 
 ### A concrete example
 
-With a limit of 5 requests per 60 seconds, suppose `alice` starts a window at `12:00:00`:
+With a limit of 5 requests per 60 seconds, `alice` belongs to the globally aligned window that begins at `12:00:00`:
 
 | Time | Request count before | Result | Remaining |
 | --- | ---: | --- | ---: |
@@ -120,9 +129,9 @@ The counter is reset as a whole at the end of a window. This is easy to implemen
 
 ## Next exercises
 
-1. Add a test for window expiry by injecting a `Clock` rather than calling `System.currentTimeMillis()` directly.
+1. Add a concurrent test proving that only the configured quota is allowed.
 2. Replace the fixed window with a sliding-window counter.
-3. Implement a token-bucket limiter.
+3. Implement a token-bucket limiter behind the existing `RateLimiter` interface.
 4. Store counters in Redis so multiple instances share state.
 5. Add a cleanup policy for inactive client ids.
 6. Identify clients from an API key or authenticated principal instead of a URL path.

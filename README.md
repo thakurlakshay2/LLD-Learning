@@ -2,7 +2,7 @@
 
 Java 21 / Spring Boot project for implementing and experimenting with rate-limiting algorithms.
 
-Start with the step-by-step [learning flow](LEARNING_FLOW.md).
+Start with the step-by-step [learning flow](LEARNING_FLOW.md), then read the complete [low-level design](DESIGN.md).
 
 ## Included
 
@@ -20,6 +20,12 @@ cd "LLD Learning/Rate Limiting"
 ```
 
 Then visit `http://localhost:8080/actuator/health`.
+
+To exercise the limiter:
+
+```bash
+curl -i http://localhost:8080/api/rate-limit/alice
+```
 
 ## Test
 

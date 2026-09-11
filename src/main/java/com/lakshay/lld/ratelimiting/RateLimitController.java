@@ -9,9 +9,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class RateLimitController {
 
-	private final FixedWindowRateLimiter rateLimiter;
+	private final RateLimiter rateLimiter;
 
-	public RateLimitController(FixedWindowRateLimiter rateLimiter) {
+	public RateLimitController(RateLimiter rateLimiter) {
 		this.rateLimiter = rateLimiter;
 	}
 
@@ -23,7 +23,7 @@ public class RateLimitController {
 		RateLimitResult result = rateLimiter.check(clientId);
 		ResponseEntity.BodyBuilder response = ResponseEntity
 				.status(result.allowed() ? HttpStatus.OK : HttpStatus.TOO_MANY_REQUESTS)
-				.header("X-RateLimit-Limit", String.valueOf(rateLimiter.maxRequests()))
+				.header("X-RateLimit-Limit", String.valueOf(rateLimiter.limit()))
 				.header("X-RateLimit-Remaining", String.valueOf(result.remainingRequests()))
 				;
 
